@@ -1,7 +1,7 @@
 # 🎵 Doramind Music App
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/DuyLe0710edu/Doramind/main/public/doramind-logo.png" alt="Doramind Logo" width="180" height="180">
+  <img src="public/readme_ref/doramind-logo.png" alt="Doramind Logo" width="180" height="180">
   <h3>A modern YouTube Music clone with enhanced features</h3>
   
   ![Version](https://img.shields.io/badge/version-1.0.0-blue.svg?cacheSeconds=2592000)
@@ -11,7 +11,7 @@
 </div>
 
 <p align="center">
-  <img src="https://i.imgur.com/IKhPBcY.gif" alt="Doramind Demo" width="100%">
+  <img src="public/readme_ref/image1.png" alt="Doramind Demo" width="100%">
 </p>
 
 ## ✨ Features
@@ -42,10 +42,10 @@ Check out the live demo: [Doramind Music App](https://doramind-music.vercel.app)
 
 <div align="center">
   <div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;">
-    <img src="https://i.imgur.com/KJVoZBS.jpg" width="400" alt="Home Page">
-    <img src="https://i.imgur.com/5jTKhC8.jpg" width="400" alt="Explore Page">
-    <img src="https://i.imgur.com/L3HwXq5.jpg" width="400" alt="Player View">
-    <img src="https://i.imgur.com/wIdGiGR.jpg" width="400" alt="Mobile View">
+    <img src="public/readme_ref/image2.png" width="400" alt="Home Page">
+    <img src="public/readme_ref/image3.png" width="400" alt="Explore Page">
+    <img src="public/readme_ref/image4.png" width="400" alt="Player View">
+    <img src="public/readme_ref/image5.png" width="400" alt="Mobile View">
   </div>
 </div>
 
