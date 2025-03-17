@@ -1,9 +1,10 @@
 "use client"
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import MusicSection from '../components/sections/MusicSection';
 import AlbumCard from '../components/ui/AlbumCard';
 import CategoryBar from '../components/ui/CategoryBar'; 
+import QuotaAlert from '../components/ui/QuotaAlert';
 import { 
   getTrendingMusic, 
   getNewReleases, 
@@ -20,8 +21,8 @@ import { RefreshCw, AlertTriangle } from 'lucide-react';
 
 // Number of items to display per section
 const ITEMS_PER_SECTION = 6;
-// Fetch more items to avoid additional API calls
-const MAX_FETCH_RESULTS = 50;
+// Reduce fetch results to minimize API quota usage
+const MAX_FETCH_RESULTS = 25; // Reduced from 50 to 25
 
 // Add typings for our global fetch state
 declare global {
@@ -64,63 +65,11 @@ export default function HomePage() {
   const [chillVideos, setChillVideos] = useState<VideoItem[]>([]);
   const [partyVideos, setPartyVideos] = useState<VideoItem[]>([]);
   
-  // LocalStorage data caching
-  useEffect(() => {
-    // Load cached data on mount
-    try {
-      const cachedData = localStorage.getItem('homepageData');
-      if (cachedData) {
-        const parsedData = JSON.parse(cachedData);
-        const cacheTime = parsedData.timestamp || 0;
-        const now = Date.now();
-        const cacheAge = now - cacheTime;
-        
-        // Use cache if it's less than 6 hours old
-        if (cacheAge < 6 * 60 * 60 * 1000) {
-          console.log('Using cached homepage data');
-          setTrendingVideos(parsedData.trending || []);
-          setNewReleases(parsedData.newReleases || []);
-          setListenAgainVideos(parsedData.listenAgain || []);
-          setPodcastVideos(parsedData.podcasts || []);
-          setFocusVideos(parsedData.focus || []);
-          setWorkoutVideos(parsedData.workout || []);
-          setChillVideos(parsedData.chill || []);
-          setPartyVideos(parsedData.party || []);
-          
-          // Still load fresh data in the background
-          // This was likely causing the infinite loop if fetchData triggers re-renders
-          // that cause useEffect to run again
-          setIsLoading(false);
-          
-          // Use a timeout to avoid React 18's double-mounting in development causing issues
-          const timer = setTimeout(() => {
-            fetchData(true);
-          }, 100);
-          
-          return () => clearTimeout(timer);
-        }
-      }
-    } catch (error) {
-      console.error('Error loading cached data:', error);
-    }
-    
-    // Fetch fresh data if no cache or cache is old
-    fetchData(false);
-    
-    // Return empty cleanup function to satisfy the hook
-    return () => {};
-  }, []); // Empty dependency array means this only runs once on mount
+  // Add a debounce mechanism to prevent multiple rapid refreshes
+  const [isRefreshDebounced, setIsRefreshDebounced] = useState(false);
   
-  // Check for quota issues on mount and set state accordingly
-  useEffect(() => {
-    const hasQuotaIssues = checkQuotaStatus();
-    if (hasQuotaIssues) {
-      setQuotaError(true);
-    }
-  }, []);
-  
-  // Optimize data fetching to use fewer API calls
-  const fetchData = async (isBackgroundRefresh = false) => {
+  // Make fetchData available to other functions via useCallback
+  const fetchData = useCallback(async (isBackgroundRefresh = false) => {
     if (!isBackgroundRefresh) {
       setIsLoading(true);
     }
@@ -196,26 +145,133 @@ export default function HomePage() {
       setIsLoading(false);
       window._isFetchingHomeData = false;
     }
-  };
+  }, []);
+  
+  // Create a callback for refreshing content after key rotation
+  const refreshAfterKeyChange = useCallback(() => {
+    console.log('\n🔄🔄🔄 REFRESHING CONTENT AFTER KEY CHANGE 🔄🔄🔄');
+    
+    // Clear all relevant caches to force fresh data
+    clearCacheByPattern('search');
+    clearCacheByPattern('videos');
+    
+    // Reset quota error state
+    setQuotaError(false);
+    
+    // Fetch fresh data
+    console.log('🔄 Triggering fetchData to get fresh content with new API key');
+    fetchData(false);
+    
+    console.log('🔄🔄🔄 REFRESH AFTER KEY CHANGE COMPLETE 🔄🔄🔄\n');
+  }, [fetchData]);
+  
+  // LocalStorage data caching
+  useEffect(() => {
+    // Load cached data on mount
+    try {
+      const cachedData = localStorage.getItem('homepageData');
+      if (cachedData) {
+        const parsedData = JSON.parse(cachedData);
+        const cacheTime = parsedData.timestamp || 0;
+        const now = Date.now();
+        const cacheAge = now - cacheTime;
+        
+        // Use cache if it's less than 6 hours old
+        if (cacheAge < 6 * 60 * 60 * 1000) {
+          console.log('Using cached homepage data');
+          setTrendingVideos(parsedData.trending || []);
+          setNewReleases(parsedData.newReleases || []);
+          setListenAgainVideos(parsedData.listenAgain || []);
+          setPodcastVideos(parsedData.podcasts || []);
+          setFocusVideos(parsedData.focus || []);
+          setWorkoutVideos(parsedData.workout || []);
+          setChillVideos(parsedData.chill || []);
+          setPartyVideos(parsedData.party || []);
+          
+          // Still load fresh data in the background
+          // This was likely causing the infinite loop if fetchData triggers re-renders
+          // that cause useEffect to run again
+          setIsLoading(false);
+          
+          // Use a timeout to avoid React 18's double-mounting in development causing issues
+          const timer = setTimeout(() => {
+            fetchData(true);
+          }, 100);
+          
+          return () => clearTimeout(timer);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading cached data:', error);
+    }
+    
+    // Fetch fresh data if no cache or cache is old
+    fetchData(false);
+    
+    // Return empty cleanup function to satisfy the hook
+    return () => {};
+  }, [fetchData]); // Add fetchData as a dependency
+  
+  // Check for quota issues on mount and set state accordingly
+  useEffect(() => {
+    const hasQuotaIssues = checkQuotaStatus();
+    if (hasQuotaIssues) {
+      setQuotaError(true);
+    }
+  }, []);
   
   // Fetch all mood categories in one batch to reduce API calls
   const fetchMoodCategories = async () => {
     console.time('fetchMoodCategories');
     try {
-      // Fetch a larger number of results for each category to avoid additional API calls
-      const [focus, workout, chill, party] = await Promise.all([
+      // Stagger API calls to spread quota usage
+      // First fetch only the most important categories
+      const [focus, workout] = await Promise.all([
         getMoodVideos("focus", MAX_FETCH_RESULTS),
         getMoodVideos("workout", MAX_FETCH_RESULTS),
-        getMoodVideos("chill", MAX_FETCH_RESULTS),
-        getMoodVideos("party", MAX_FETCH_RESULTS)
       ]);
+      
+      // Initialize with empty arrays for less important categories
+      let chill: VideoItem[] = [];
+      let party: VideoItem[] = [];
+      
+      // Schedule less important categories to load after a delay
+      setTimeout(async () => {
+        try {
+          if (!checkQuotaStatus()) {
+            const [chillResults, partyResults] = await Promise.all([
+              getMoodVideos("chill", MAX_FETCH_RESULTS),
+              getMoodVideos("party", MAX_FETCH_RESULTS),
+            ]);
+            
+            // Update state with delayed results
+            setChillVideos(chillResults.slice(0, ITEMS_PER_SECTION));
+            setPartyVideos(partyResults.slice(0, ITEMS_PER_SECTION));
+            
+            // Update cache with new data
+            try {
+              const cachedData = localStorage.getItem('homepageData');
+              if (cachedData) {
+                const parsedData = JSON.parse(cachedData);
+                parsedData.chill = chillResults.slice(0, ITEMS_PER_SECTION);
+                parsedData.party = partyResults.slice(0, ITEMS_PER_SECTION);
+                localStorage.setItem('homepageData', JSON.stringify(parsedData));
+              }
+            } catch (error) {
+              console.error('Error updating cache with delayed categories:', error);
+            }
+          }
+        } catch (error) {
+          console.error('Error loading delayed mood categories:', error);
+        }
+      }, 5000); // Load after 5 seconds
       
       console.timeEnd('fetchMoodCategories');
       return {
         focus: focus.slice(0, ITEMS_PER_SECTION), 
         workout: workout.slice(0, ITEMS_PER_SECTION),
-        chill: chill.slice(0, ITEMS_PER_SECTION),
-        party: party.slice(0, ITEMS_PER_SECTION)
+        chill: [], // Initially empty, will be populated later
+        party: []  // Initially empty, will be populated later
       };
     } catch (error) {
       console.error("Error fetching mood categories:", error);
@@ -228,25 +284,74 @@ export default function HomePage() {
   const fetchOtherCategories = async () => {
     console.time('fetchOtherCategories');
     try {
-      // Get trending music (only costs 5 quota units)
-      const trending = await getTrendingMusic(MAX_FETCH_RESULTS);
+      // Get trending music (only costs 5 quota units) and new releases (most visible)
+      const [trending, releases] = await Promise.all([
+        // Get trending music (only costs 5 quota units)
+        getTrendingMusic(MAX_FETCH_RESULTS),
+        // Fetch new releases data
+        getNewReleases(MAX_FETCH_RESULTS),
+      ]);
       
-      // Fetch new releases data
-      const releases = await getNewReleases(MAX_FETCH_RESULTS);
+      // Initialize with empty arrays for less important categories
+      let relatedSongs: VideoItem[] = [];
+      let podcasts: VideoItem[] = [];
       
-      // Use some popular song IDs to find related content for "Listen Again"
-      // Taylor Swift - Fortnight
-      const relatedSongs = await getRelatedVideos("MlGxz0KIqLM", MAX_FETCH_RESULTS);
+      // Schedule less important categories to load after a delay
+      setTimeout(async () => {
+        try {
+          if (!checkQuotaStatus()) {
+            // Use some popular song IDs to find related content for "Listen Again"
+            const relatedResults = await getRelatedVideos("MlGxz0KIqLM", MAX_FETCH_RESULTS);
+            setListenAgainVideos(relatedResults.slice(0, ITEMS_PER_SECTION));
+            
+            // Update cache with new data
+            try {
+              const cachedData = localStorage.getItem('homepageData');
+              if (cachedData) {
+                const parsedData = JSON.parse(cachedData);
+                parsedData.listenAgain = relatedResults.slice(0, ITEMS_PER_SECTION);
+                localStorage.setItem('homepageData', JSON.stringify(parsedData));
+              }
+            } catch (error) {
+              console.error('Error updating cache with related songs:', error);
+            }
+          }
+        } catch (error) {
+          console.error('Error loading related songs:', error);
+        }
+      }, 3000); // Load after 3 seconds
       
-      // Fetch podcast videos
-      const podcasts = await searchVideos("top podcasts music episodes", MAX_FETCH_RESULTS);
+      // Schedule podcasts to load last (lowest priority)
+      setTimeout(async () => {
+        try {
+          if (!checkQuotaStatus()) {
+            // Fetch podcast videos
+            const podcastResults = await searchVideos("top podcasts music episodes", MAX_FETCH_RESULTS);
+            setPodcastVideos(podcastResults.slice(0, ITEMS_PER_SECTION));
+            
+            // Update cache with new data
+            try {
+              const cachedData = localStorage.getItem('homepageData');
+              if (cachedData) {
+                const parsedData = JSON.parse(cachedData);
+                parsedData.podcasts = podcastResults.slice(0, ITEMS_PER_SECTION);
+                localStorage.setItem('homepageData', JSON.stringify(parsedData));
+              }
+            } catch (error) {
+              console.error('Error updating cache with podcasts:', error);
+            }
+          }
+        } catch (error) {
+          console.error('Error loading podcasts:', error);
+        }
+      }, 7000); // Load after 7 seconds
       
       console.timeEnd('fetchOtherCategories');
       return {
         trending: trending.slice(0, ITEMS_PER_SECTION),
         newReleases: releases.slice(0, ITEMS_PER_SECTION),
-        listenAgain: relatedSongs.slice(0, ITEMS_PER_SECTION),
-        podcasts: podcasts.slice(0, ITEMS_PER_SECTION)
+        listenAgain: [], // Initially empty, will be populated later
+        podcasts: []     // Initially empty, will be populated later
       };
     } catch (error) {
       console.error("Error fetching other categories:", error);
@@ -305,6 +410,139 @@ export default function HomePage() {
       setIsLoadingNewReleases(false);
     }
   };
+  
+  const handleRefresh = useCallback(() => {
+    if (isRefreshDebounced) {
+      console.log('Refresh debounced, please wait before refreshing again');
+      return;
+    }
+    
+    // Set debounce flag
+    setIsRefreshDebounced(true);
+    
+    // Clear cache and fetch fresh data
+    clearCacheByPattern('homepageData');
+    fetchData(false);
+    
+    // Reset debounce after 10 seconds
+    setTimeout(() => {
+      setIsRefreshDebounced(false);
+    }, 10000);
+  }, [fetchData, isRefreshDebounced]);
+  
+  // Replace the existing refresh button click handler with our debounced version
+  const refreshButtonClick = () => {
+    handleRefresh();
+  };
+
+  // Function to load data sequentially
+  const loadDataSequentially = async () => {
+    try {
+      // First, load the most important categories
+      console.log("🔄 Loading primary categories (focus and workout)...");
+      const [focusData, workoutData] = await Promise.all([
+        getMoodVideos('focus', MAX_FETCH_RESULTS),
+        getMoodVideos('workout', MAX_FETCH_RESULTS),
+      ]);
+      
+      setFocusVideos(focusData.slice(0, ITEMS_PER_SECTION));
+      setWorkoutVideos(workoutData.slice(0, ITEMS_PER_SECTION));
+      
+      // Then load trending and new releases with a small delay
+      console.log("🔄 Loading trending and new releases...");
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      const [trendingData, newReleasesData] = await Promise.all([
+        getTrendingMusic(MAX_FETCH_RESULTS),
+        getNewReleases(MAX_FETCH_RESULTS),
+      ]);
+      
+      setTrendingVideos(trendingData.slice(0, ITEMS_PER_SECTION));
+      setNewReleases(newReleasesData.slice(0, ITEMS_PER_SECTION));
+      
+      // Finally, load the less important categories
+      console.log("🔄 Loading secondary categories (chill, party, and related)...");
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      if (!checkQuotaStatus()) {
+        const [chillData, partyData] = await Promise.all([
+          getMoodVideos('chill', MAX_FETCH_RESULTS),
+          getMoodVideos('party', MAX_FETCH_RESULTS),
+        ]);
+        
+        setChillVideos(chillData.slice(0, ITEMS_PER_SECTION));
+        setPartyVideos(partyData.slice(0, ITEMS_PER_SECTION));
+        
+        // Load related songs last
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        if (!checkQuotaStatus()) {
+          const relatedResults = await getRelatedVideos("MlGxz0KIqLM", MAX_FETCH_RESULTS);
+          setListenAgainVideos(relatedResults.slice(0, ITEMS_PER_SECTION));
+        }
+      }
+      
+      // Update cache with all the data
+      try {
+        const cacheData = {
+          focus: focusVideos,
+          workout: workoutVideos,
+          trending: trendingVideos,
+          newReleases: newReleases,
+          chill: chillVideos,
+          party: partyVideos,
+          listenAgain: listenAgainVideos,
+        };
+        localStorage.setItem('homepageData', JSON.stringify(cacheData));
+      } catch (error) {
+        console.error('Error updating cache:', error);
+      }
+      
+      // Set loading to false when all data is loaded
+      setIsLoading(false);
+    } catch (error) {
+      console.error('Error loading data sequentially:', error);
+      setIsLoading(false);
+    }
+  };
+
+  // In the useEffect, replace the existing data loading with the sequential approach
+  useEffect(() => {
+    const loadData = async () => {
+      setIsLoading(true);
+      
+      try {
+        // Try to load data from cache first
+        const cachedData = localStorage.getItem('homepageData');
+        if (cachedData) {
+          const parsedData = JSON.parse(cachedData);
+          
+          // Set data from cache
+          setFocusVideos(parsedData.focus || []);
+          setWorkoutVideos(parsedData.workout || []);
+          setTrendingVideos(parsedData.trending || []);
+          setNewReleases(parsedData.newReleases || []);
+          setChillVideos(parsedData.chill || []);
+          setPartyVideos(parsedData.party || []);
+          setListenAgainVideos(parsedData.listenAgain || []);
+          
+          // Set loading to false since we have data from cache
+          setIsLoading(false);
+          
+          // Load fresh data in the background
+          loadDataSequentially();
+        } else {
+          // No cache, load data sequentially
+          await loadDataSequentially();
+        }
+      } catch (error) {
+        console.error('Error loading data:', error);
+        setIsLoading(false);
+      }
+    };
+    
+    loadData();
+  }, []);
 
   // Loading skeleton
   if (isLoading) {
@@ -312,10 +550,20 @@ export default function HomePage() {
       <div className="flex flex-col min-h-screen bg-black text-white">
         <CategoryBar />
         
-        <div className="py-4 px-6">
+        <div className="py-4 px-6 flex justify-between items-center">
           <h1 className="text-2xl font-bold text-white">
             {getGreeting()}, {userName}
           </h1>
+          
+          <button 
+            className={`flex items-center text-sm px-3 py-1 rounded-full bg-gray-800 ${isRefreshDebounced ? 'text-gray-600 cursor-not-allowed' : 'text-gray-300 hover:text-white hover:bg-gray-700'} transition-colors`}
+            onClick={refreshButtonClick}
+            disabled={isLoading || isRefreshDebounced}
+            title={isRefreshDebounced ? "Please wait before refreshing again" : "Refresh all content"}
+          >
+            <RefreshCw size={14} className={`mr-1 ${isLoading ? 'animate-spin' : isRefreshDebounced ? 'opacity-50' : ''}`} />
+            {isLoading ? 'Loading...' : isRefreshDebounced ? 'Wait 10s...' : 'Refresh All'}
+          </button>
         </div>
         
         {[1, 2, 3, 4].map(i => (
@@ -340,50 +588,30 @@ export default function HomePage() {
       <CategoryBar />
       
       {/* Welcome header */}
-      <div className="px-6 py-4">
+      <div className="px-6 py-4 flex justify-between items-center">
         <h1 className="text-2xl font-bold">{getGreeting()}, {userName}</h1>
         
+        <button 
+          className={`flex items-center text-sm px-3 py-1 rounded-full bg-gray-800 ${isRefreshDebounced ? 'text-gray-600 cursor-not-allowed' : 'text-gray-300 hover:text-white hover:bg-gray-700'} transition-colors`}
+          onClick={refreshButtonClick}
+          disabled={isLoading || isRefreshDebounced}
+          title={isRefreshDebounced ? "Please wait before refreshing again" : "Refresh all content"}
+        >
+          <RefreshCw size={14} className={`mr-1 ${isLoading ? 'animate-spin' : isRefreshDebounced ? 'opacity-50' : ''}`} />
+          {isLoading ? 'Loading...' : isRefreshDebounced ? 'Wait 10s...' : 'Refresh All'}
+        </button>
+        
         {/* Show quota warning if needed */}
-        {quotaError && (
-          <div className="mt-2 p-4 rounded bg-yellow-800/70 text-yellow-100 text-sm flex items-start">
-            <AlertTriangle size={18} className="mt-0.5 mr-3 flex-shrink-0" />
-            <div className="space-y-2">
-              <p className="font-medium text-base">YouTube API quota exceeded</p>
-              <p className="leading-relaxed">
-                We've reached the daily limit for YouTube API requests. The app is now showing curated fallback content until our quota resets.
-              </p>
-              <p className="leading-relaxed">
-                You can still browse and play the displayed songs. We'll automatically resume API calls tomorrow when the quota refreshes.
-              </p>
-              <div className="pt-1 flex gap-3">
-                <button 
-                  className="px-3 py-1.5 rounded bg-yellow-700 hover:bg-yellow-600 transition-colors"
-                  onClick={() => {
-                    // Get fresh cached content if available from localStorage
-                    try {
-                      const cachedData = localStorage.getItem('homepageData');
-                      if (cachedData) {
-                        const parsedData = JSON.parse(cachedData);
-                        setTrendingVideos(parsedData.trending || []);
-                        setNewReleases(parsedData.newReleases || []);
-                        setListenAgainVideos(parsedData.listenAgain || []);
-                        setPodcastVideos(parsedData.podcasts || []);
-                        setFocusVideos(parsedData.focus || []);
-                        setWorkoutVideos(parsedData.workout || []);
-                        setChillVideos(parsedData.chill || []);
-                        setPartyVideos(parsedData.party || []);
-                      }
-                    } catch (error) {
-                      console.error('Error loading cached data:', error);
-                    }
-                  }}
-                >
-                  Use Cached Data
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        {quotaError && <QuotaAlert onRefreshAfterKeyChange={refreshAfterKeyChange} />}
+        
+        {/* Debug button to force show the QuotaAlert */}
+        <button 
+          onClick={() => setQuotaError(prev => !prev)}
+          className="mt-2 bg-gray-700 hover:bg-gray-600 text-white text-xs py-1 px-3 rounded flex items-center"
+        >
+          <AlertTriangle className="h-3 w-3 mr-1" />
+          {quotaError ? 'Hide' : 'Show'} Quota Alert (Debug)
+        </button>
       </div>
 
       {/* Main content */}
@@ -419,12 +647,13 @@ export default function HomePage() {
           moreLink="/explore/new"
           actionButton={
             <button 
-              className="flex items-center text-sm text-gray-400 hover:text-white transition-colors"
-              onClick={refreshNewReleases}
-              disabled={isLoadingNewReleases}
+              className={`flex items-center text-sm ${isRefreshDebounced ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-white'} transition-colors`}
+              onClick={refreshButtonClick}
+              disabled={isLoadingNewReleases || isRefreshDebounced}
+              title={isRefreshDebounced ? "Please wait before refreshing again" : "Refresh new releases"}
             >
-              <RefreshCw size={14} className={`mr-1 ${isLoadingNewReleases ? 'animate-spin' : ''}`} />
-              {isLoadingNewReleases ? 'Refreshing...' : 'Refresh'}
+              <RefreshCw size={14} className={`mr-1 ${isLoadingNewReleases ? 'animate-spin' : isRefreshDebounced ? 'opacity-50' : ''}`} />
+              {isLoadingNewReleases ? 'Refreshing...' : isRefreshDebounced ? 'Wait 10s...' : 'Refresh'}
             </button>
           }
         >
